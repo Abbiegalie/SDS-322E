@@ -1,0 +1,104 @@
+---
+title: "HW 9"
+author: "SDS322E"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float:
+      collapsed: false
+---
+
+```{r global_options, include=FALSE}
+#DO NOT EDIT THIS CHUNK OR ANYTHING ABOVE IT!
+knitr::opts_chunk$set(echo = TRUE, eval = TRUE, fig.align = "center", warning = F, message = F, tidy=T, tidy.opts=list(width.cutoff=50), R.options=list(max.print=100,dplyr.print_max=100))
+```
+
+## Enter your name and EID here
+Abigail Tovar art2976
+
+##### Take a look at the `swiss` dataset. It contains measurements of 6 socioecnomic variables for 47 French-speaking Swiss provinces/cantons from 1888. Variables are all recorded on a 0-100 scale and include `Fertility`, `Agriculture` (% in an agricultural occupation), `Examination` (% earning highest honors on army exam), `Education` (% with education beyond primary school), `Catholic` (% Catholic), and `Infant.Mortality` (% of live births surviving less than 1 year).
+
+##### First, create a correlation matrix and visualize it with a correlation heatmap using ggplot2. Include `scale_fill_gradient2()` and label your tiles with the actual correlations using `geom_text(aes(label=...))`. I will will discuss which variables are strongly positively correlated, which variables are strongly negatively correlated, which variable seems to be the least correlated with things like education and agriculture.
+
+```{R}
+library(tidyverse)
+library(cluster)
+
+library(tidyverse)
+library(cluster)
+
+swiss %>% select_if(is.numeric) %>% cor %>% as.data.frame %>% 
+    rownames_to_column %>% pivot_longer(-1) %>% ggplot(aes(rowname, 
+    name, fill = value)) + geom_tile() + geom_text(aes(label = round(value, 
+    2))) + scale_fill_gradient2(low = "red", mid = "white", 
+    high = "blue")
+```
+*In the correlation matrix it shows that there seems to be a strong negative correlation between agriculture and education, examination. Infant mortality seems to be the least correlated with variables like agriculture and education. There are strong correlations with fertility and agriculture and the percentage of Catholic as well as infant mortality.*
+
+
+
+```{R}
+swiss_pam <- swiss %>% pam(k = 2)
+swiss_pam$silinfo$avg.width
+
+plot(swiss_pam, which = 2)
+```
+
+*After running the PAM Clustering algorithm , and choosing the number of cluster which maximized the silhouette width, given the cluster solution has an average silhouette width of 0.63, it means a reasonable structure has been found. The two medoids are represented the provinces Yverdon and Monthey. They are most similar with fertility and most different in terms of the percentage of Catholic*
+
+
+
+
+##### We used six variables here but can only really visualize data in up to three dimensions (and 2D is usually easier). To help us get a sense of the clusters, let's take the `swiss` data, add the PAM cluster assignments as a factor or character variable (e.g., using mutate; call it `cluster`), and then plot every pairwise scatterplot using the `ggpairs(cols= 1:6, aes(color=cluster))` function. Give it a second to run (it is creating a lot of plots).
+
+#### Which variable shows the greatest difference between the two clusters? Which variable shows the least difference between the two clusters? In terms of only `Fertility`, `Agriculture`, and `Examination`, use the information in the plots to describe/characterize the two clusters.
+
+```{R message = F}
+library(GGally)
+library(GGally)
+swiss_clust <- swiss %>% mutate(cluster = as.factor(swiss_pam$clustering))
+swiss_clust
+swiss_clust %>% ggpairs(cols = 1:6, aes(color = cluster))
+```
+
+*Catholic shows the greatest difference between the two clusters. The clusters have the least difference is with difference within the Education variable. The scatter plots which show the relationships between Examination and Fertility, as well as Fertility and Agriculture show that generally provinces with higher percentage of the population educated beyond primary school, have lower fertility rates, and less males involved in agriculture.*
+
+
+##### Read in the `ability` dataset. It contains six ability test scores for 112 individuals. The variable `general` is a non-verbal measure of general intelligence; `picture` is a picture-completion test; `blocks` is a block design task;  `maze` is a maze-completion task; `reading` is a reading comprehension task; `vocabulary` is a vocabulary test. 
+
+##### Below, we take the dataset and perform principal component analysis on it. Keep PCs until you hit 85% of the total variance. Interpret each of those PCs by looking at the signs and magnitudes of the loadings: What do the PCs represent in terms of the original variables? What does it mean to score high/low on each of these components?
+
+```{R}
+ability <- read.csv("https://raw.githubusercontent.com/nathanielwoodward/ability/main/ability.csv")
+
+princomp(ability, cor=T) -> pca1
+```
+
+*The higher scores in PC1 would mean that there is stronger score for overall intelligence, the PC2 could mean that the stronger in picture-completion test an individual was the worse the reading and vocab score. PC3 focused on picture completion test for higher values that showed positive scores, whereas negative meant bad maze and vocab scores. PC4 shows if negative maze, vocab, picture scores weaker in that area and higher general and block scores were for positive values. PC5 means if positive higher vocab scores and if negative, that they had stronger maze and reading scores.*
+
+
+### Question 2.2 (1 pts)
+
+##### The `scores` matrix inside of the `pca1` object contains the Principal Component scores for each of the 112 individuals for each of the 6 PCs. The first column (`Comp.1`) contains scores for all individuals on PC1, the second column (`Comp.2`) contains scores on PC2, etc. You can access it with `pca1$scores`.
+
+##### To show that the 6 Principcal Components are uncorrelated with each other, compute the correlation matrix of all PC scores and pipe it into round(10).
+
+```{R}
+scoresf <- data.frame(PC1 = pca1$scores[, 1], PC2 = pca1$scores[, 
+    2], PC3 = pca1$scores[, 3], PC4 = pca1$scores[, 
+    4], PC5 = pca1$scores[, 5], PC6 = pca1$scores[, 
+    6])
+scoresf %>% cor %>% round(10)
+
+```
+
+
+
+
+```{R, echo=F}
+## DO NOT DELETE THIS BLOCK!
+sessionInfo()
+Sys.time()
+Sys.info()
+```

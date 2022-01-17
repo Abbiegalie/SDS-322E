@@ -1,0 +1,144 @@
+---
+title: "HW 7"
+author: "SDS322E"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float:
+      collapsed: false
+---
+
+```{r global_options, include=FALSE}
+#DO NOT EDIT THIS CHUNK OR ANYTHING ABOVE IT!
+knitr::opts_chunk$set(echo = TRUE, eval = TRUE, fig.align = "center", warning = F, message = F, tidy=T, tidy.opts=list(width.cutoff=50), R.options=list(max.print=100,dplyr.print_max=100))
+```
+
+
+
+#### You will first need to read in the two files `background.csv` and `records.csv` (see code chunk below)
+
+#### In these two datasets, your are given two simulated yet authentic institutional datasets.  The `background` dataset contains an ID column that identifies each unique student ($\approx 150,000$ from 2000 to 2018), along with background/demographic variables about each student (the data is fake, but the variables and many features of the data are true-to-life). `fseut` is the first semester a student enrolled at UT; `derivation` is based on a university race/ethnicity/nationality category; `SES` is a measure of socioeconomic status based on educational attainment and family income, averaged for both parents (1=lowest SES category, 10=highest SES category). `AP` and `CBE` indicate transfer credits from those exams. `SAT` is an SAT-equivalent score (ACT converted if applicable).
+
+#### The `records` dataset is a wide file that contains, for each of eight possible years, a unique students' credit hours undertaken, hours passed, hours failed, grade points, and gpa. It would be wise to familiarize yourself with what these two datasets look like before diving into the assignment, especially `records` (i.e., you will save yourself a lot of time if you understand the organization).
+
+### 1 (4 pts) 
+
+#### How many IDs are in `background` that do not appear in `records`? How many IDs are in `records` that do not appear in `background`? How many IDs do the two datasets have in common? If there were supposed to be 150000 students total, how many students are missing entirely from these data (i.e., their IDs appear neither in the background data or student records)?
+
+```{R}
+library(tidyverse)
+
+#bg <- read_csv("/stor/work/SDS322ENW/background.csv")
+#rec <- read_csv("/stor/work/SDS322ENW/records.csv")
+
+### Not on the server? Get on and then download them to your own computer! Alternatively, uncomment and run these (might take a sec):
+
+bg <- read_csv("https://drive.google.com/uc?export=download&id=1iDZjouO3o2KmO3EJg8tdqjKXyQ3XE7FA")
+rec <- read_csv("https://drive.google.com/uc?export=download&id=1PhQ51JED5ZVR6Qp85Ds5GK2cg55IQzjr")
+
+
+#You are encouraged to poke around: to get some sense of the data, try
+head(bg)
+glimpse(rec)
+names(rec)[-1] %>% matrix(nrow=18,byrow=F)
+```
+
+```{R}
+names(rec)[-1] %>% matrix(nrow = 18, byrow = F)
+anti_join(bg, rec, by = c(ID = "id"))
+anti_join(rec, bg, by = c(id = "ID"))
+
+merge(rec, bg, by.x = "id", by.y = "ID")
+```
+
+*1, 471 students have IDs in background which do not appear in the records dataset. 2,971 students have IDs in the records dataset which do not appear in the background dataset students are missing and do not have IDs in the entire dataset.*
+
+### 2.1 (1 pt) 
+
+#### Perform a full-join on this data and save it as `fulldata`
+
+```{R}
+fulldata <- full_join(rec, bg, by = c(id = "ID"))
+```
+
+### 2.2 (8 pt) 
+
+#### Now, tidy this data. Create a new dataset (call it `longdat`). Each student-year-semester is an observation, so I want a column for year order (called `order`: first, second, third, etc.; need to use `separate` function), a column for `semester` (recoded with semester names rather than numbers: "9"="fall", "6"="summer", "2"="spring"; need to use separate), a column called `ccyys` (e.g., 20089, 20092, etc; you will need to create this variable name because it will be NA after separating), and columns for hrs.undertaken, hrs.fail, hrs.pass, grade.points, and gpa. There should be 17 columns total: `ID, fseut, derivation, female, SES, SAT, AP, CBE, graduated, order, semester, ccyys, hrs.undertaken, hrs.fail, hrs.pass, grade.points, gpa`. You will need to use pivot_longer(), separate(), and probably also pivot_wider(). 
+
+
+```{R}
+## you might consider getting your code running with just the first 500 rows of your merged dataset to get things working (and then replace it with the full dataset at the end before knitting)
+
+ first500 <- mergedat %>% slice(1:500)
+
+longdat <- first500 %>% pivot_longer(2:145, names_to = "name") %>% 
+    separate(name, into = c("order", "semester", "name"), 
+        sep = "_") %>% pivot_wider(names_from = "name") %>% 
+    mutate(semester = recode(semester, `9` = "fall", 
+        `6` = "summer", `2` = "spring")) %>% rename_with(~"ccyys", 
+    contains("NA"))
+
+longdat %>% glimpse()
+```
+
+
+### 3.1 (1 pt) 
+
+#### Take the resulting tidy dataset and remove all rows containing NAs (**use this na-free dataset from here on unless otherwise noted**). How many rows were lost?
+
+```{R}
+longdat_new <- longdat %>% drop_na()
+longdat_new
+```
+
+*There were 6,960 rows removed from the original dataset.*
+
+
+### 3.2 (1 pt) 
+
+#### Notice there is no single variable that uniquely identifies a row. Use `unite(...,remove=F)` to add a new variable `unique` that combines `ccyys` and `ID` into a unique identifier. Show that it is in fact unique (i.e., that there are no duplicates in this column).
+
+```{R}
+#your code here
+```
+
+###  3.3 (1 pt) 
+
+#### Create a new variable called `year` by copying `ccyys` and then removing the fifth digit using `separate()`, or just by using `separate(..., remove=F)` without explicitly copying `ccyys`. The goal is 2008 instead of 20089, 2009 instead of 20092, etc. Keep the last number (9, 2, or 6) around in a column caled semester2 (this variable will make your life easier shortly). Pipe your output into `select(ID,ccyys,year,semester,semester2,ccyys) %>% glimpse()`
+
+```{R}
+longdat_new %>% unite(ccyys, id, col = "unique", sep = "")
+longdat_new %>% separate("ccyys", into = c("year", 
+    "semester2"), sep = 4, remove = F) %>% select(id, 
+    ccyys, year, semester, semester2, ccyys) %>% glimpse()
+```
+
+###  3.4 (2 pts) 
+
+#### Again, after removing the NAs, create a new column with each student's *cumulative GPA* (call it `cum_gpa`) as of each semester (make sure data is sorted correctly before calculating cumulative statistics). Note that this is not as a simple as computing a running average of GPAs from each semester (think about an average of averages versus a weighted average). I would probably save this as something else rather than overwriting in case anything goes wrong. Pipe your output into `select(ID,ccyys,gpa,cum_gpa) %>% arrange(ID) %>% glimpse()`
+
+```{R}
+longdat %>% group_by(id) %>% summarize((semester))
+```
+
+### 3.5 (1 pt) 
+
+#### What proportion of students took at least one summer class? You are advised to use `semester2` rather than `semester` to summarize etc. (it takes much less time).
+
+```{R}
+longdat_new %>% separate("ccyys", into = c("year", 
+    "semester2"), sep = 4, remove = F) %>% select(id, 
+    ccyys, year, semester, semester2, ccyys) %>% group_by(id, 
+    semester2) %>% summarize(semester2 = "6")
+```
+
+*There are 1,233 students who took at least one summer class.*
+
+
+```{R, echo=F}
+## DO NOT DELETE THIS BLOCK!
+sessionInfo()
+Sys.time()
+Sys.info()
+```

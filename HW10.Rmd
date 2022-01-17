@@ -1,0 +1,252 @@
+---
+title: "HW 10"
+author: "SDS 322E"
+date: ""
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r global_options, include=FALSE}
+#LEAVE THIS CHUNK ALONE!
+library(knitr)
+opts_chunk$set(fig.align="center", fig.height=5, message=FALSE, warning=FALSE, fig.width=8, tidy.opts=list(width.cutoff=60),tidy=TRUE)
+
+class_diag <- function(score, truth, positive, cutoff=.5){
+
+  pred <- factor(score>cutoff,levels=c("TRUE","FALSE"))
+  truth <- factor(truth==positive, levels=c("TRUE","FALSE"))
+
+  tab<-table(truth, pred)
+  acc=sum(diag(tab))/sum(tab)
+  sens=tab[1,1]/rowSums(tab)[1]
+  spec=tab[2,2]/rowSums(tab)[2]
+  ppv=tab[1,1]/colSums(tab)[1]
+
+#CALCULATE F1
+  f1=2*(sens*ppv)/(sens+ppv)
+  
+#CALCULATE EXACT AUC
+  truth<-as.numeric(truth=="TRUE")
+  ord<-order(score, decreasing=TRUE)
+  score <- score[ord]; truth <- truth[ord]
+  TPR=cumsum(truth)/max(1,sum(truth))
+  FPR=cumsum(!truth)/max(1,sum(!truth))
+  dup<-c(score[-1]>=score[-length(score)], FALSE)
+  TPR<-c(0,TPR[!dup],1); FPR<-c(0,FPR[!dup],1)
+  n <- length(TPR)
+  auc<- sum( ((TPR[-1]+TPR[-n])/2) * (FPR[-1]-FPR[-n]) )
+  round(data.frame(acc,sens,spec,ppv,f1,ba=(sens+spec)/2,auc, row.names = "Metrics"),4)
+}
+```
+
+---
+
+
+
+### 1a. (3 pts) 
+
+First, run the following code to read in the data and drop the unnecessary variables. With the resulting dataset `poke`, how many are Legendary? How many are not? Using ggplot, make a scatterplot of HP (y-axis) against Attack (x-axis), and color the points by Legendary status. Describe what you see in words (no real correct answer). 
+
+```{R}
+library(tidyverse)
+poke<-read.csv("http://www.nathanielwoodward.com/Pokemon.csv")
+poke<-poke%>%dplyr::select(-`X.`,-Total)
+poke %>% filter(Legendary == "True") %>% summarize(count = n())
+poke %>% filter(Legendary == "False") %>% summarize(count = n())
+
+myplot = ggplot(poke, aes(x = Attack, y = HP))
+myplot + geom_point(aes(color = Legendary))
+```
+
+
+*The legendary count in the poke dataset is 65. The non-legendary count in the poke dataset is 735. The scatter plot shows that there is a somewhat positive with the attack and False.*
+
+
+### 1b. (2 pts) 
+
+Run the following code to predict Legendary from HP and Attack using logistic regression. 
+
+Generate predicted score/probabilities for your original observations using `predict` and save them as an object called `prob_reg`. Use them to compute classification diagnostics with the `class_diag()` function from class or the equivalent: it is declared in the preamble above so it gets loaded when you knit. If you go up and run it, you should be able to use it in any subsequent code chunk). How well is the model performing per AUC?
+
+```{R}
+logistic_fit <- glm(Legendary=="True" ~ Attack + HP, data=poke, family="binomial")
+
+prob_reg <- predict(logistic_fit)
+class_diag(prob_reg, poke$Legendary, positive = "True")
+```
+
+*The model performs per AUC at a good level of discrimination.*
+
+
+### 1c. (2 pts) 
+
+Now perform 10-fold cross validation with this model by hand like we did in class. Summarize the results by reporting average classification diagnostics (e.g., from `class_diags()`) across the ten folds (you might get a `NaN` for ppv, which is fine). Do you see a noticeable decrease in AUC when predicting out of sample (i.e., does this model shows signs of overfitting)?
+
+```{R}
+set.seed(322)
+k = 10
+
+data <- sample_frac(poke)  #randomly order rows
+folds <- rep(1:k, length.out = nrow(data))  #create folds
+
+diags <- NULL
+
+i = 1
+for (i in 1:k) {
+    # create training and test sets
+    train <- data[folds != i, ]
+    test <- data[folds == i, ]
+    truth <- test$Legendary
+    
+    # train model
+    fit <- glm(Legendary ~ HP + Attack, data = train, family = "binomial")  ### SPECIFY THE LOGISTIC REGRESSION MODEL FIT TO THE TRAINING SET HERE
+    
+    # test model
+    probs <- predict(fit, test, type = "response")  ### GET PREDICTIONS FROM THE TRAINED MODEL ON THE TEST SET HERE
+    
+    # get performance metrics for each fold
+    diags <- rbind(diags, class_diag(probs, truth, positive = "True"))
+}
+
+# average performance metrics across all folds
+summarize_all(diags, mean)
+```
+
+*There doesn’t appear to be over fitting when predicting out of the sample because the auc relatively stays around the same range.*
+
+### 1d. (2 pts) 
+
+Run the following code to predict Legendary from HP and Attack using k nearest neighbors (kNN).
+
+Generate predicted scores/probabilities for your original observations using `predict` and save them as an object called `prob_knn`. Use them to compute classification diagnostics with the `class_diag()` function above. How well is the model performing per AUC?
+
+```{R}
+library(caret)
+knn_fit <- knn3(Legendary == "True" ~ Attack + HP, data = poke)
+prob_knn <- predict(knn_fit, poke)
+class_diag(prob_knn[, 1], poke$Legendary, positive = "True")
+```
+
+*The model has a significantly lower AUC value that the previous models.*
+
+
+### 1e. (2 pts) 
+
+Now perform 10-fold cross validation with this kNN model by hand as we did in class. I have reproduced the code below: All you need to do is replacing the capitalized comments accordingly. The rest of the code will summarize the results by reporting average classification diagnostics across the ten folds (you might get a `NaN` for ppv, which is fine). Do you see a real decrease in AUC when predicting out of sample? (Does this model shows signs of overfitting?) Which model (logistic regression vs kNN) performed the best on new data (i.e., in cross-validation)?
+
+```{R}
+set.seed(322)
+k = 10
+
+data <- sample_frac(poke)  #randomly order rows
+folds <- rep(1:k, length.out = nrow(data))  #create folds
+
+diags <- NULL
+
+i = 1
+for (i in 1:k) {
+    # create training and test sets
+    train <- data[folds != i, ]
+    test <- data[folds == i, ]
+    truth <- test$Legendary
+    
+    # train model
+    fit <- glm(Legendary ~ HP + Attack, data = train, family = binomial)
+    
+    # test model
+    probs <- predict(fit, newdata = test)
+    
+    # get performance metrics for each fold
+    diags <- rbind(diags, class_diag(probs, truth, positive = "True"))
+}
+
+# average performance metrics across all folds
+summarize_all(diags, mean)
+```
+
+*The model which performed best on the new data seems to be with logistic regression*
+
+### 1f. (1 pts) 
+
+Below, I'll plot the decision boundary for the kNN model trained on a random 9/10 of the data (the first plot), and then show how that model would classify the other 1/10 (the second plot). The blue boundary classifies points inside of it as Legendary (points outside are classified as not Legendary). Notice how the images correspond to the classification metrics (also provided).
+
+Now, looking at the two images, and describe how/where you see overfitting (i.e., the model fitting too closely to quirks in the training dataset that aren't likely to appear in the testing set) 
+
+Note that this example is a particularly egregious train/test split and is usually not so bad. We will talk in class about choosing k to avoid this.
+
+```{R}
+grid <- data.frame(expand.grid(Attack = seq(min(poke$Attack), 
+    max(poke$Attack), length.out = 100), HP = seq(min(poke$HP), 
+    max(poke$HP), length.out = 100)))
+set.seed(322)
+
+train <- poke %>% sample_frac(0.9)
+test <- poke %>% anti_join(train, by = "Name")
+
+knn_train <- knn3(Legendary == "True" ~ Attack + HP, data = train)
+
+yhat_knn <- predict(knn_train, newdata = grid)[, 2]
+
+grid %>% mutate(p = yhat_knn) %>% ggplot(aes(Attack, HP)) + geom_point(data = train, 
+    aes(Attack, HP, color = Legendary)) + geom_contour(aes(z = p), 
+    breaks = 0.5) + ylim(1, 255) + xlim(5, 190) + ggtitle("Training Set Example")
+
+class_diag(predict(knn_train, train)[, 2], train$Legendary, positive = "True")
+
+grid %>% mutate(p = yhat_knn) %>% ggplot(aes(Attack, HP)) + geom_point(data = test, 
+    aes(Attack, HP, color = Legendary)) + geom_contour(aes(z = p), 
+    breaks = 0.5) + ylim(1, 255) + xlim(5, 190) + ggtitle("Testing Set Example")
+
+class_diag(predict(knn_train, test)[, 2], test$Legendary, positive = "True")
+```
+
+*The training dataset has more noise and is less fitting to a trend, as there are far more points that were accounted for in the training set than testing, leading to overfitting and a stark difference between the two sets.*
+
+### 2a. (1 pts) 
+
+Now, treat the predicted probabilities as the response variable and perform an Wilcoxon/Mann-Whitney U test in R using `wilcox.test(group1, group2)` where group1 is `malig` and group2 is `benign`. Don't worry about the details, but note that this is a test of the hypothesis that the distribution of predicted probabilities for both groups (malig and benign) is equal. What does your W/U statistic equal (remember this number)?
+
+```{R}
+wilcox.test(malig, benign)
+```
+
+### 2c. (2 pts) 
+
+Now, tidy this data by creating a dataframe and putting all predicted probabilities into one column and malignant/benign labels in another (you should end up with twelve rows, one for each observation). Use this data and ggplot to make a graph of the distribution of probabilities for both groups (histogram): fill by group. Leave default binwidth alone (it will look kind of like a barcode). Eyeballing and counting manually, for each benign (red) compute the number of malignants (blue) it is greater than (blue) and add them all up. This is the number of times a benign has a higher predicted probability than a malignant! In 1a you found the number of times a malignant beats a benign (i.e., has a higher predicted probability than a benign): What do those two numbers add up to?
+
+```{R}
+cancer_data <- data.frame(malig = c(0.49, 0.36, 0.58, 0.56, 0.61, 
+    0.66), benign = c(0.42, 0.22, 0.26, 0.53, 0.31, 0.41))
+table <- cancer_data %>% pivot_longer(cols = malig:benign, names_to = "type", 
+    values_to = "probability")
+ggplot(table, aes(probability, fill = type)) + geom_histogram()
+```
+
+*The number of times benign has a higher predicted probability than malignant was 2, earlier the probability that malignant beats benign was 0.88 and so adding these two together it is 2.88.*
+
+
+### 2d. (2 pts)
+
+Set the cutoff/threshold at .2, .25, .3, .35, .37, .4, .45, .5, .55, .57, .6, .65, .7 and for for each cutoff, compute the true-positive rate (TPR) and the false-postive rate (FPR). You may do this manually, but I encourage you to try to figure out a way to do it in R (e.g., using `expand.grid` and `dplyr` functions). Save the TPR and FPR for each cut-off. Then make a plot of the TPR (y-axis) against the FPR (x-axis) using geom_path.
+
+```{R}
+cutoffs<-c(.2, .25, .3, .35, .37, .4, .45, .5, .55, .57, .6, .65, .7)
+
+cutoffs <- c(0.2, 0.25, 0.3, 0.35, 0.37, 0.4, 0.45, 0.5, 0.55, 
+    0.57, 0.6, 0.65, 0.7)
+
+table <- expand.grid(cutoffs = c(0.2, 0.25, 0.3, 0.35, 0.37, 
+    0.4, 0.45, 0.5, 0.55, 0.57, 0.6, 0.65, 0.7), rate = c("TRUE", 
+    "FALSE")) %>% count(rate)
+table %>% mutate(TPR = mean(rate == TRUE)/sum(n)) %>% mutate(FPR = mean(rate == 
+    FALSE)/(sum(n)))
+```
+
+
+```{R, echo=F}
+## DO NOT DELETE THIS CHUNK!
+sessionInfo()
+Sys.time()
+Sys.info()
+```
